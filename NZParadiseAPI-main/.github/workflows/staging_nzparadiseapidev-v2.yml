@@ -1,0 +1,93 @@
+name: Build and deploy ASP.Net Core app to Azure Web App - NZParadiseAPIDev
+
+on:
+  push:
+    branches:
+      - staging
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET Core
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.x'
+
+      - name: Restore dependencies
+        run: dotnet restore NZParadiseAPI/NZParadiseAPI.csproj --no-cache
+
+      - name: Build with dotnet
+        run: dotnet build NZParadiseAPI/NZParadiseAPI.csproj --configuration Release --no-restore
+
+      - name: dotnet publish
+        run: dotnet publish NZParadiseAPI/NZParadiseAPI.csproj -c Release -o ./publish -r win-x86 --no-cache
+
+      - name: Check publish folder contents
+        shell: pwsh
+        run: |
+          Write-Output "Listing ./publish:"
+          Get-ChildItem ./publish
+          Write-Output ""
+          Write-Output "Checking for Microsoft.IdentityModel.Protocols.dll:"
+          if (Test-Path ./publish/Microsoft.IdentityModel.Protocols.dll) {
+            Write-Output "Microsoft.IdentityModel.Protocols.dll found"
+          } else {
+            Write-Output "Microsoft.IdentityModel.Protocols.dll NOT found!"
+          }
+
+      - name: Upload artifact for deployment job
+        uses: actions/upload-artifact@v4
+        with:
+          name: .net-app
+          path: ./publish
+
+  deploy:
+    runs-on: windows-latest
+    needs: build
+    environment:
+      name: 'Production'
+      url: ${{ steps.deploy-to-webapp.outputs.webapp-url }}
+
+    steps:
+      - name: Download artifact from build job
+        uses: actions/download-artifact@v4
+        with:
+          name: .net-app
+          path: ./publish
+
+      - name: Check published folder contents
+        shell: pwsh
+        run: |
+          Write-Output "Listing ./publish:"
+          Get-ChildItem ./publish
+          Write-Output ""
+          Write-Output "Checking for web.config:"
+          if (Test-Path ./publish/web.config) {
+            Write-Output "[OK] web.config found"
+          } else {
+            Write-Output "[ERROR] web.config NOT found!"
+          }
+          Write-Output ""
+          Write-Output "Checking for Microsoft.IdentityModel.Protocols.dll:"
+          if (Test-Path ./publish/Microsoft.IdentityModel.Protocols.dll) {
+            Write-Output "[OK] Microsoft.IdentityModel.Protocols.dll found"
+          } else {
+            Write-Output "[ERROR] Microsoft.IdentityModel.Protocols.dll NOT found!"
+          }
+
+      - name: Deploy to Azure Web App
+        id: deploy-to-webapp
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: 'NZParadiseAPIDev-V2'
+          slot-name: 'Production'
+          package: ./publish
+          publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_16C5B85AC84E4F1AAC21C16CA497AC79 }}
+          clean: true

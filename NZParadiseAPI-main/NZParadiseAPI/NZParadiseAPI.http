@@ -1,0 +1,6 @@
+@NZParadiseAPI_HostAddress = http://localhost:5175
+
+GET {{NZParadiseAPI_HostAddress}}/User/
+Accept: application/json
+
+###
